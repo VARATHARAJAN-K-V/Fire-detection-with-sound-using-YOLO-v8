@@ -1,0 +1,82 @@
+1.Program for Training and Validating datasets
+MY_SECRET_KEY=""
+!pip install ultralytics
+!pip install roboflow
+import ultralytics
+from roboflow import Roboflow
+from ultralytics import YOLO
+from IPython.display import Image
+!pip install roboflow
+from roboflow import Roboflow
+rf = Roboflow(api_key="191SvgqRZRUAaYGeMlUA")
+project = rf.workspace("-jwzpw").project("continuous_fire")
+version = project.version(6)
+dataset = version.download("yolov8")
+!yolo task=detect mode=train model=yolov8s.pt data=/content/continuous_fire-6/data.yaml epochs=1
+imgsz=640 plots=True
+# VIEW MODEL TRANING CHARTS
+Image(filename=f'/content/runs/detect/train/results.png', width=600)
+!ls /content/runs/detect/train/
+!ls /content/runs/detect/train/
+!ls /content/runs/detect/train/weights/
+!yolo task=detect mode=val model=/content/runs/detect/train/weights/best.pt
+data=/content/continuous_fire-6/data.yaml
+2.Program for linking Webcam and Live Detecting
+from ultralytics import YOLO
+import cv2
+import winsound # Use this for Windows to generate beep sound
+# Load the YOLO model
+model = YOLO("best.pt")
+# Check class names in the model to verify 'fire' index
+print("Model Class Names:", model.names) # Print class names for verification
+# IP webcam stream URL
+ip_webcam_url = "http://192.168.244.145:8080/video" # Replace with your IP Webcam URL
+# Open the IP webcam stream
+cap = cv2.VideoCapture(ip_webcam_url)
+if not cap.isOpened():
+ print("Error: Could not open IP webcam.")
+ exit()
+# Update with the actual index for 'fire'
+fire_class_index = 0
+confidence_threshold = 0.7 # Adjusted confidence threshold for debugging
+while True:
+ # Read a frame from the IP webcam stream
+ ret, frame = cap.read()
+ if not ret:
+ print("Failed to capture frame")
+ break
+ # Perform prediction
+ results = model.predict(source=frame, imgsz=640, conf=confidence_threshold, verbose=False)
+ # Debugging: Print all detections
+ for detection in results[0].boxes:
+ cls = int(detection.cls[0])
+ conf = float(detection.conf[0])
+ print(f"Detected Class: {model.names[cls]}, Confidence: {conf:.2f}")
+ # Get fire detections
+ fire_boxes = []
+ fire_confidences = []
+ for box in results[0].boxes:
+ cls, conf = int(box.cls[0]), float(box.conf[0])
+ if cls == fire_class_index and conf > confidence_threshold:
+ fire_boxes.append(box.xyxy[0])
+ fire_confidences.append(conf)
+ # Trigger beep if confidence is high
+ if conf > 0.9:
+ print("High confidence fire detected! Beep sound triggered.")
+ winsound.Beep(440, 500) # Beep
+ # Draw bounding boxes for fire
+ for i, box in enumerate(fire_boxes):
+ x1, y1, x2, y2 = map(int, box)
+ confidence = fire_confidences[i]
+ label = f"Fire: {confidence:.2%}"
+ color = (0, 0, 255) # Red
+ cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+ cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+ # Display the frame
+ cv2.imshow("Live Fire Detection", frame)
+ # Break loop on pressing 'q'
+ if cv2.waitKey(1) & 0xFF == ord('q'):
+ break
+# Release the camera and close windows
+cap.release()
+cv2.destroyAllWindows()
